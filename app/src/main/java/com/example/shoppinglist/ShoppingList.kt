@@ -1,6 +1,10 @@
 package com.example.shoppinglist
 
+import android.Manifest
+import android.content.Context
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,6 +23,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -37,21 +42,61 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
+import androidx.navigation.NavController
+import com.example.shoppinglist.helper.LocationUtils
+import com.example.shoppinglist.viewModel.LocationViewModel
 
 data class ShoppingItem(
     val id:Int,
     var name: String,
     var quantity: Int,
-    var isEditing: Boolean = false
+    var isEditing: Boolean = false,
+    var address: String = ""
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ShoppingList() {
+fun ShoppingList(
+    locationUtils: LocationUtils,
+    viewModel: LocationViewModel,
+    navController: NavController,
+    context: Context,
+    address: String
+) {
     var shoppingItems by remember { mutableStateOf(listOf<ShoppingItem>()) }
     var showDialog by remember { mutableStateOf(false) }
     var itemName by remember { mutableStateOf("") }
     var itemQuantity by remember { mutableStateOf("") }
+
+    val reqestPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+        onResult = {
+            permissions ->
+            if (permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true && permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true){
+                locationUtils.requestLocationUpdates(viewModel)
+            }else{
+                val rationaleRequired = ActivityCompat.shouldShowRequestPermissionRationale(
+                    context as MainActivity,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                ) || ActivityCompat.shouldShowRequestPermissionRationale(
+                    context,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                )
+
+                if(rationaleRequired){
+                    Toast.makeText(context,
+                        "Location Permission is required for this feature to work", Toast.LENGTH_LONG)
+                        .show()
+                }else{
+                    Toast.makeText(context,
+                        "Location Permission is required. Please enable it in the Android Settings",
+                        Toast.LENGTH_LONG)
+                        .show()
+                }
+            }
+        }
+    )
 
     Column(
         modifier = Modifier
@@ -89,6 +134,7 @@ fun ShoppingList() {
                             editedItem?.let {
                                 it.name = editedName
                                 it.quantity = editedQuantity
+                                it.address = address
                             }
                         }
                     )
@@ -113,7 +159,7 @@ fun ShoppingList() {
 
     if(showDialog){
         itemQuantity = "1"
-        var context = LocalContext.current
+        val context = LocalContext.current
         AlertDialog(
             onDismissRequest = { showDialog = false },
             confirmButton = {
@@ -129,7 +175,8 @@ fun ShoppingList() {
                                 val newItem = ShoppingItem(
                                     id = shoppingItems.size + 1,
                                     name = itemName,
-                                    quantity = itemQuantity.toInt() // check this is the number nor
+                                    quantity = itemQuantity.toInt(), // check this is the number nor
+                                    address = address
                                 )
                                 shoppingItems = shoppingItems + newItem
                                 showDialog = false
@@ -182,6 +229,22 @@ fun ShoppingList() {
                             .padding(8.dp),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
+                    Button(
+                        onClick = {
+                            if (locationUtils.hasLocationPermission(context)) {
+                                locationUtils.requestLocationUpdates(viewModel)
+                                navController.navigate("locationSelectionScreen"){
+                                    this.launchSingleTop
+                                }
+                            }else{
+                                reqestPermissionLauncher.launch(arrayOf(
+                                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                                    Manifest.permission.ACCESS_FINE_LOCATION
+                                ))
+                            }
+                        }) {
+                        Text("Select location")
+                        }
                 }
             }
         )
@@ -202,14 +265,34 @@ private fun ShoppingListItem(
         ),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(
-            text = item.name,
-            modifier = Modifier.padding(8.dp)
-        )
-        Text(
-            text = "Qty: ${item.quantity}",
-            modifier = Modifier.padding(8.dp)
-        )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(8.dp)
+        ) {
+            Row {
+                Text(
+                    text = item.name,
+                    modifier = Modifier.padding(8.dp)
+                )
+                Text(
+                    text = "Qty: ${item.quantity}",
+                    modifier = Modifier.padding(8.dp)
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+            ) {
+                Icon(
+                    imageVector = Icons.Default.LocationOn,
+                    contentDescription = null
+                )
+                Text(
+                    text = item.address
+                )
+            }
+        }
         Row(
             modifier = Modifier.padding(8.dp)
         ){
